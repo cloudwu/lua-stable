@@ -51,7 +51,6 @@ _strto_l(void *ud, const char *str, size_t n) {
 static void *
 thread_read(void* ptr) { 
 	struct table * t = ptr;
-	unsigned id = (unsigned)pthread_self();
 	int last=0;
 	struct table * n = stable_table(t, TKEY("number"));
 	struct table * s = stable_table(t, TKEY("string"));
@@ -61,7 +60,7 @@ thread_read(void* ptr) {
 		if (i == last)
 			continue;
 		if (i > last+1) {
-			printf("%u %d-%d\n",id % 65535,last,i);
+			printf("%d-%d\n",last,i);
 		}
 		last = i;
 		i--;

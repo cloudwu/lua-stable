@@ -134,7 +134,7 @@ _set_value(lua_State *L, struct table * t, const char *key, size_t sz, int idx, 
 		break;
 	}
 	case LUA_TLIGHTUSERDATA:
-		r = stable_setid(t, key, sz, (uint64_t)lua_touserdata(L,idx));
+		r = stable_setid(t, key, sz, (uint64_t)(uintptr_t)lua_touserdata(L,idx));
 		break;
 	case LUA_TTABLE: {
 		struct table * sub = stable_settable(t,key,sz);

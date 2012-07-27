@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <inttypes.h>
 
 static void
 print_string(void *ud, const char *string, size_t sz) {
@@ -19,7 +20,7 @@ dump(struct table *root, int depth) {
 		for (j=0;j<depth;j++)
 			printf("  ");
 		if (keys[i].key == NULL) {
-			printf("[%lu] = ",keys[i].sz_idx);
+			printf("[%" PRIuPTR "] = ",keys[i].sz_idx);
 		} else {
 			printf("%s = ",keys[i].key);
 		}
