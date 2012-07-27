@@ -1,17 +1,34 @@
-s = require "stable"
-s.init()
-a = s.create  {1,2,3,4,nil,5,x=10,y=11}
-a.hello = { hello = true, world = false }
+local print_r = require "print_r"
+local stable = require "stable"
 
-local function dump(a, depth)
-	for k,v in pairs(a) do
-		if type(v) == "userdata" then
-			print(string.rep("\t",depth),k,"==>")
-			dump(v,depth+1)
-		else
-			print(string.rep("\t",depth),k,v)
-		end
-	end
-end
+-- init meta info first , we have two struct and one enum now : "foo" , "bar" and "xx"
+local info = stable.init {
+	foo = {
+		hello = 1,	-- number , default value is 1
+		world = { "Alice", "Bob" },	-- anonymous enum
+		foobar = {
+			foobar = "",	-- string
+		},
+		array = "*number",	-- number array
+		bars = "*bar",	-- struct bar array
+	},
+	bar = {
+		first = true,
+		second = 1,
+		third = "*xx", -- enum xx array
+	},
+	xx = { "ONE", "TWO" }
+}
 
-dump(a,0)
+-- create an object with type "foo"
+a = stable.create "foo"
+
+a.world = "Alice"
+a.foobar = "xxx"
+a.bars[1] = { second = 2 }
+a.bars[2] = { third = { "ONE" , "ONE" , "TWO" } }
+
+print_r(a)
+
+-- release a
+stable.release(a)

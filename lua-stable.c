@@ -64,7 +64,7 @@ _get(lua_State *L) {
 static void
 _error(lua_State *L, const char *key, size_t sz, int type) {
 	if (key == NULL) {
-		luaL_error(L, "Can't set %lu with type %s",sz,lua_typename(L,type));
+		luaL_error(L, "Can't set %d with type %s",(int)sz,lua_typename(L,type));
 	} else {
 		luaL_error(L, "Can't set %s with type %s",key,lua_typename(L,type));
 	}
@@ -338,7 +338,7 @@ _release(lua_State *L) {
 }
 
 int
-luaopen_stable(lua_State *L) {
+luaopen_stable_raw(lua_State *L) {
 	luaL_checkversion(L);
 
 	luaL_Reg l[] = {
