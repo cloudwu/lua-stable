@@ -9,6 +9,6 @@ t.hello = { world = true }
 
 -- you can send t (a lightuserdata) to other lua state. (thread safe)
 
-stable.realse(t)
+stable.release(t)
 
 ```
