@@ -1,4 +1,5 @@
 s = require "stable"
+s.init()
 a = s.create  {1,2,3,4,nil,5,x=10,y=11}
 a.hello = { hello = true, world = false }
 

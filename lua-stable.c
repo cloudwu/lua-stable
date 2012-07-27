@@ -298,8 +298,10 @@ _pairs(lua_State *L) {
 	return 2;
 }
 
-static void
-make_mt(lua_State *L) {
+static int
+_init_mt(lua_State *L) {
+	lua_pushlightuserdata(L,NULL);
+	int m = lua_getmetatable(L,-1);
 	luaL_Reg lib[] = {
 		{ "__index", _get },
 		{ "__newindex", _set },
@@ -307,7 +309,14 @@ make_mt(lua_State *L) {
 		{ "__ipairs", _ipairs },
 		{ NULL, NULL },
 	};
-	luaL_newlib(L,lib);
+	if (m == 0) {
+		luaL_newlibtable(L,lib);
+	}
+	luaL_setfuncs(L,lib,0);
+	lua_setmetatable(L,-2);
+	lua_pop(L,1);
+
+	return 0;
 }
 
 static int
@@ -332,14 +341,14 @@ int
 luaopen_stable(lua_State *L) {
 	luaL_checkversion(L);
 
-	lua_pushlightuserdata(L,NULL);
-	make_mt(L);
-	lua_setmetatable(L,-2);
-	lua_pop(L,1);
-
 	luaL_Reg l[] = {
 		{ "create" , _create },
 		{ "release" , _release },
+		{ "get", _get },
+		{ "set", _set },
+		{ "pairs", _pairs },
+		{ "ipairs", _ipairs },
+		{ "init", _init_mt },
 		{ NULL, NULL },
 	};
 
