@@ -18,7 +18,7 @@ local function print_r(root)
 			elseif type(v) == "table" then
 				local new_key = name .. "." .. key
 				cache[v] = new_key
-				tinsert(temp,"+" .. key .. _dump(v,space .. (next(t,k) and "|" or " " ).. srep(" ",#key),new_key))
+				tinsert(temp,"+" .. key .. _dump(v,space .. (pairs(t)(t,k) and "|" or " " ).. srep(" ",#key),new_key))
 			else
 				tinsert(temp,"+" .. key .. " [" .. tostring(v).."]")
 			end

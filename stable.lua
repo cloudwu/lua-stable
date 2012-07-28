@@ -2,7 +2,6 @@ local c = require "stable.raw"
 local assert = assert
 local stable_get = c.get
 local stable_set = c.set
-local stable_inext = c.ipairs()
 
 local stable = {}
 
@@ -89,9 +88,10 @@ local _struct_meta = {
 }
 
 local function _next_array(t,prev)
-	local k,v = stable_inext(t.__handle , prev)
-	if k then
-		return k, t[k]
+	local n = stable_get(t.__handle, 's') + 1
+	local index = prev + 1
+	if index < n then
+		return index,t[index]
 	end
 end
 
@@ -114,6 +114,10 @@ local _array_meta = {
 		return obj
 	end,
 	__newindex = function(t,index,v)
+		local n = stable_get(t.__handle, 's') + 1
+		if index == n then
+			stable_set(t.__handle,'s',n)
+		end
 		local enum_set = t.__enum
 		if enum_set then
 			stable_set(t.__handle, index, enum_set[v])
@@ -137,6 +141,9 @@ local _array_meta = {
 	end,
 	__ipairs = function(t)
 		return _next_array , t , 0
+	end,
+	__len = function(t)
+		return stable_get(t.__handle , 's')
 	end,
 }
 
@@ -172,8 +179,8 @@ local function _init_struct(info , src)
 			_init_typeinfo(anonymous_type , v)
 			if v[1] then
 				-- It's an enum
-				info.get[i] = anonymous_type.name_id
-				info.set[i] = anonymous_type.id_name
+				info.set[i] = anonymous_type.name_id
+				info.get[i] = anonymous_type.id_name
 				info.default[k] = 1
 			else
 				-- It's a struct
@@ -194,8 +201,8 @@ local function _init_struct(info , src)
 				else
 					local typeinfo = _typeinfo[v]
 					if typeinfo[1] == "enum" then
-						info.get[i] = typeinfo.name_id
-						info.set[i] = typeinfo.id_name
+						info.set[i] = typeinfo.name_id
+						info.get[i] = typeinfo.id_name
 						info.default[k] = 1
 					else
 						info.default[k] = v
@@ -214,8 +221,8 @@ local function _init_enum(info, src)
 	info.name_id = {}
 	info.id_name = {}
 	for k,v in ipairs(src) do
-		info.name_id[k]=v
-		info.id_name[v]=k
+		info.name_id[v]=k
+		info.id_name[k]=v
 	end
 end
 
@@ -249,12 +256,11 @@ function stable.init(typeinfo)
 	return _typeinfo
 end
 
-local function _init(self, tinfo)
+local function _init(self, typename)
+	local tinfo = _typeinfo[typename]
 	for key,default in pairs(tinfo.default) do
 		local index = tinfo.get[key]
-		if default == "" then
-			stable_set(self.__handle, index, "")
-		elseif type(default) == "string" then
+		if type(default) == "string" and default~="" then
 			local sub = stable.create(default)
 			stable_set(self.__handle, index, sub.__handle)
 			rawset(self, key , sub)
@@ -290,18 +296,69 @@ function stable.create( typename )
 				self.__type = typename
 			end
 		end
+		stable_set(self.__handle, 's' , 0)
 		return setmetatable(self, _array_meta)
 	end
 	self.__iter = _typeinfo[typename].iter
 	self.__get = _typeinfo[typename].get
 	self.__set = _typeinfo[typename].set
-	_init(self, _typeinfo[typename])
+	_init(self, typename)
 	return setmetatable(self, _struct_meta)
 end
 
 function stable:release()
 	setmetatable(self,nil)
 	c.release(self.__handle)
+end
+
+local _default_value = {
+	number = 0,
+	boolean = false,
+	string = "",
+}
+
+local function _reset_default(self,typename)
+	if string.byte(typename) == 42 then
+		stable.resize(self,0)
+		return
+	end
+	local tinfo = _typeinfo[typename]
+	for key,default in pairs(tinfo.default) do
+		local index = tinfo.get[key]
+		if type(default) == "string" and default~="" then
+			_reset_default(self[key] , default)
+		else
+			stable_set(self.__handle, index, default)
+		end
+	end
+end
+
+function stable.resize(t,size)
+	local n = assert(stable_get(t.__handle,'s'))
+	stable_set(t.__handle,'s',size)
+	if size > n then
+		local typename = t.__type
+		local default
+		if type(typename) == "table" then
+			default = 1
+		else
+			default = _default_value[typename]
+		end
+		if default then
+			for i = n+1,size do
+				stable_set(t.__handle, i , default)
+			end
+		else
+			for i = n+1,size do
+				local old = t[i]
+				if old then
+					_reset_default(old, typename)
+				else
+					t[i] = {}
+				end
+			end
+		end
+	end
 end
 
 return stable
