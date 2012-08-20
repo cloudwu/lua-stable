@@ -157,6 +157,19 @@ function _bind( handle, typeinfo)
 	return setmetatable(self, _struct_meta)
 end
 
+local function gen_index(tbl)
+	local index = {}
+	for k in pairs(tbl) do
+		table.insert(index,k)
+	end
+	table.sort(index)
+	local ret = {}
+	for k,v in ipairs(index) do
+		ret[v] = k
+	end
+	return ret
+end
+
 local _init_typeinfo	-- function
 
 local function _init_struct(info , src)
@@ -164,9 +177,10 @@ local function _init_struct(info , src)
 	info.get = {}
 	info.set = {}
 	info.default = {}
-	local i = 1
 	local anonymous = 0
+	local index_table = gen_index(src)
 	for k,v in pairs(src) do
+		local i = index_table[k]
 		info.iter[i] = k
 		info.get[k] = i
 		info.set[k] = i
@@ -212,8 +226,6 @@ local function _init_struct(info , src)
 		else
 			info.default[k] = v
 		end
-
-		i = i + 1
 	end
 end
 
