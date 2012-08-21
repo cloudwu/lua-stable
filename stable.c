@@ -279,7 +279,7 @@ _create_array(size_t n) {
 static struct array *
 _init_array(struct table *t, int cap) {
 	int size = DEFAULT_SIZE;
-	while (cap > size) {
+	while (cap >= size) {
 		size *=2;
 	}
 	struct array *a = _create_array(size);
