@@ -39,6 +39,3 @@ a.bars[2].third[2] = "TWO"
 stable.resize(a.bars,1)
 
 print_r(a)
-
--- release a
-stable.release(a)

@@ -42,6 +42,7 @@ struct string {
 };
 
 struct table {
+	int ref;
 	int magic;
 	int lock;
 	int map_lock;
@@ -205,9 +206,15 @@ struct table *
 stable_create() {
 	struct table * t = malloc(sizeof(*t));
 	memset(t,0,sizeof(*t));
+	t->ref = 1;
 	t->magic = MAGIC_NUMBER;
 	return t;
 };
+
+void 
+stable_grab(struct table * t) {
+	__sync_add_and_fetch(&t->ref, 1);
+}
 
 static void
 _clear_value(struct value *v) {
@@ -250,9 +257,17 @@ _delete_map(struct map *m) {
 	free(m);
 }
 
+int
+stable_getref(struct table *t) {
+	return t->ref;
+}
+
 void 
 stable_release(struct table *t) {
 	if (t) {
+		if (__sync_sub_and_fetch(&t->ref,1) != 0) {
+			return;
+		}
 		if (t->array) {
 			_delete_array(t->array);
 		}
@@ -501,8 +516,10 @@ _insert_array_value(struct table *t, size_t idx, struct value *v) {
 	struct array *a = t->array;
 	if (a == NULL) {
 		a = _init_array(t,idx);
-	} else if (idx >= a->size) {
-		a = _expand_array(t,idx);
+	} else {
+		if (idx >= a->size) {
+			a = _expand_array(t,idx);
+		}
 	}
 	int type = a->a[idx].type;
 	a->a[idx] = *v;

@@ -1,7 +1,6 @@
 #include "stable.h"
 #include <lua.h>
 #include <lauxlib.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -326,14 +325,51 @@ _create(lua_State *L) {
 		_settable(t,L,1,0);
 	}
 	lua_pushlightuserdata(L,t);
-	return 1;
+	struct table ** ud = lua_newuserdata(L,sizeof(struct table*));
+	*ud = t;
+	lua_pushvalue(L,lua_upvalueindex(1));
+	lua_setmetatable(L,-2);
+	return 2;
 }
 
 static int
 _release(lua_State *L) {
+	struct table ** t = lua_touserdata(L,1);
+	stable_release(*t);
+	return 0;
+}
+
+static int
+_grab(lua_State *L) {
 	luaL_checktype(L,1,LUA_TLIGHTUSERDATA);
 	struct table * t = lua_touserdata(L,1);
+	stable_grab(t);
+	struct table ** ud = lua_newuserdata(L, sizeof(struct table *));
+	*ud = t;
+	lua_pushvalue(L,lua_upvalueindex(1));
+	lua_setmetatable(L,-2);
+	return 1;
+}
+
+static int
+_decref(lua_State *L) {
+	struct table * t = lua_touserdata(L,1);
 	stable_release(t);
+	return 0;
+}
+
+static int
+_getref(lua_State *L) {
+	struct table * t = lua_touserdata(L,1);
+	int ref = stable_getref(t);
+	lua_pushinteger(L,ref);
+	return 1;
+}
+
+static int
+_incref(lua_State *L) {
+	struct table * t = lua_touserdata(L,1);
+	stable_grab(t);
 	return 0;
 }
 
@@ -342,8 +378,9 @@ luaopen_stable_raw(lua_State *L) {
 	luaL_checkversion(L);
 
 	luaL_Reg l[] = {
-		{ "create" , _create },
-		{ "release" , _release },
+		{ "decref", _decref },
+		{ "incref", _incref },
+		{ "getref", _getref },
 		{ "get", _get },
 		{ "set", _set },
 		{ "pairs", _pairs },
@@ -353,6 +390,18 @@ luaopen_stable_raw(lua_State *L) {
 	};
 
 	luaL_newlib(L,l);
+
+	lua_createtable(L,0,1);
+	lua_pushcfunction(L, _release);
+	lua_setfield(L, -2, "__gc");
+
+	luaL_Reg l2[] = {
+		{ "create" , _create },
+		{ "grab" , _grab },
+		{ NULL, NULL },
+	};
+
+	luaL_setfuncs(L,l2,1);
 
 	return 1;
 }

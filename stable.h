@@ -29,6 +29,8 @@ struct table;
 typedef void (*table_setstring_func)(void *ud, const char *str, size_t sz);
 
 struct table * stable_create();
+void stable_grab(struct table *);
+int stable_getref(struct table *);
 void stable_release(struct table *);
 
 #define TKEY(x) x,sizeof(x)

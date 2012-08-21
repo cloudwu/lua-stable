@@ -29,6 +29,3 @@ a.bars[1] = { second = 2 }
 a.bars[2] = { third = { "ONE" , "ONE" , "TWO" } }
 
 print_r(a)
-
--- release a
-stable.release(a)

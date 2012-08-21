@@ -31,8 +31,6 @@ a.foobar = "xxx"
 a.bars[1] = { second = 2 }
 a.bars[2] = { third = { "ONE" , "ONE" , "TWO" } }
 
--- release a
-stable.release(a)
 
 ```
 
@@ -57,7 +55,5 @@ print(t.hello.world)
 for k,v in pairs(t.hello) do  -- or use sraw.pairs
   print (k,v)
 end
-
-sraw.release(t)
 
 ```

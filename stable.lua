@@ -152,6 +152,7 @@ local _array_meta = {
 function _bind( handle, typeinfo)
 	local self = {}
 	self.__handle = handle
+	self.__gc = c.grab(handle)
 	self.__iter = typeinfo.iter
 	self.__get = typeinfo.get
 	self.__set = typeinfo.set
@@ -199,7 +200,7 @@ local function _init_struct(info , src)
 				info.default[k] = 1
 			else
 				-- It's a struct
-				info.get[i] = anonymous_type
+				info.default[i] = anonymous_type
 				info.default[k] = anonymous_name
 			end
 			anonymous = anonymous + 1
@@ -213,9 +214,9 @@ local function _init_struct(info , src)
 			elseif v == "userdata" then
 				info.default[k] = int64.new(0)
 			else
-				-- default is typename ( 42 == '*' , 46 == '.' )
+				-- default is typename
 				local fc = string.byte(v)
-				if fc == 42 or fc == 46 then
+				if fc == 42 or fc == 46 then	-- '*' or '.'
 					info.default[k] = v
 				else
 					local typeinfo = _typeinfo[v]
@@ -279,7 +280,7 @@ local function _init(self, typename)
 	for key,default in pairs(tinfo.default) do
 		local index = tinfo.get[key]
 		if type(default) == "string" then
-			if string.byte(default) == 46 then -- 46 == '.'
+			if string.byte(default) == 46 then -- '.'
 				stable_set(self.__handle, index, string.sub(default,2))
 			elseif default == "" then
 				stable_set(self.__handle, index, default)
@@ -300,7 +301,7 @@ end
 
 function stable.create( typename )
 	local self = {}
-	self.__handle = c.create()
+	self.__handle, self__gc = c.create()
 
 	if string.byte(typename) == 42 then
 		-- '*' == 42 , It's a array
@@ -333,11 +334,6 @@ function stable.create( typename )
 	return setmetatable(self, _struct_meta)
 end
 
-function stable:release()
-	setmetatable(self,nil)
-	c.release(self.__handle)
-end
-
 local _default_value = {
 	number = 0,
 	boolean = false,
@@ -346,7 +342,7 @@ local _default_value = {
 }
 
 local function _reset_default(self,typename)
-	if string.byte(typename) == 42 then	-- 42 == '*'
+	if string.byte(typename) == 42 then
 		stable.resize(self,0)
 		return
 	end
@@ -354,9 +350,10 @@ local function _reset_default(self,typename)
 	for key,default in pairs(tinfo.default) do
 		local index = tinfo.get[key]
 		if type(default) == "string" then
-			local fc = string.byte(default)
-			if fc == 46 then
+			if string.byte(default) == 46 then
 				stable_set(self.__handle, index, string.sub(default,2))
+			elseif default == "" then
+				stable_set(self.__handle, index, default)
 			else
 				_reset_default(self[key] , default)
 			end
