@@ -14,8 +14,10 @@
 static struct table *
 init() {
 	struct table * t = stable_create();
-	stable_settable(t, TKEY("number"));
-	stable_settable(t, TKEY("string"));
+	struct table * sub1 = stable_create();
+	struct table * sub2 = stable_create();
+	stable_settable(t, TKEY("number"),sub1);
+	stable_settable(t, TKEY("string"),sub2);
 	stable_setnumber(t,TKEY("count"),0);
 
 	return t;

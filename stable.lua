@@ -1,8 +1,10 @@
 local c = require "stable.raw"
 local int64 = require "int64"
 local assert = assert
-local stable_get = c.get
-local stable_set = c.set
+local rawget = rawget
+local stable_get = assert(c.get)
+local stable_set = assert(c.set)
+local stable_settable = assert(c.settable)
 
 local stable = {}
 
@@ -35,6 +37,7 @@ local stable = {}
 
 local _typeinfo -- table
 local _bind	-- function
+local _create_node -- function
 
 local function _next(self, key)
 	local next_key
@@ -49,21 +52,59 @@ local function _next(self, key)
 	end
 end
 
+local _array_meta
+
+local function _bind_array(self , typename)
+	if typename == "*number" then
+		self.__type = "number"
+	elseif typename == "*boolean" then
+		self.__type = "boolean"
+	elseif typename == "*string" then
+		self.__type = "string"
+	elseif typename == "*userdata" then
+		self.__type = "userdata"
+	else
+		typename = string.sub(typename,2)
+		local typeinfo = assert(_typeinfo[typename],typename)
+		if typeinfo[1] == "enum" then
+			self.__type = typeinfo.id_name
+			self.__enum = typeinfo.name_id
+		else
+			self.__type = typename
+		end
+	end
+	return setmetatable(self, _array_meta)
+end
+
 local _struct_meta = {
 	__index = function(t,k)
 		local it = t.__get
 		local index = it[k]
-		local enum = it[index]
 		local v = stable_get(t.__handle, index)
-		if enum then
-			local obj = enum[v]
-			if obj == nil then
-				obj = _bind(v, enum)
+		if type(v) == "userdata" then
+			local typename = t.__default[k]
+			if type(typename) ~= "string" then
+				-- It's a int64
+				return v
+			elseif string.byte(typename) == 42 then	-- '*'
+				-- It's a array
+				local obj = {}
+				obj.__handle = v
+				_bind_array(obj, typename)
 				rawset(t,k,obj)
+				return obj
+			else
+				local obj = _bind(v, _typeinfo[typename])
+				rawset(t,k,obj)
+				return obj
 			end
-			return obj
 		else
-			return v
+			local enum = it[index]
+			if enum then
+				return enum[v]
+			else
+				return v
+			end
 		end
 	end,
 	__newindex = function(t,k,v)
@@ -73,8 +114,8 @@ local _struct_meta = {
 		if enum then
 			stable_set(t.__handle, index , enum[v])
 		elseif type(v) == "table" then
-			local sub = stable.create(t.__default[k])
-			stable_set(self.__handle, index, sub.__handle)
+			local sub = _create_node(t.__default[k])
+			stable_settable(self.__handle, index, sub.__handle)
 			rawset(self, key , sub)
 			for k,v in pairs(v) do
 				sub[k] = v
@@ -96,8 +137,13 @@ local function _next_array(t,prev)
 	end
 end
 
-local _array_meta = {
+-- _array_meta is local
+_array_meta = {
 	__index = function(t,index)
+		local n = stable_get(t.__handle, 's') + 1
+		if index >= n then
+			return nil
+		end
 		local obj = stable_get(t.__handle, index)
 		if obj then
 			local typename = t.__type
@@ -118,15 +164,17 @@ local _array_meta = {
 		local n = stable_get(t.__handle, 's') + 1
 		if index == n then
 			stable_set(t.__handle,'s',n)
+		elseif index > n then
+			stable.resize(t, index)
 		end
-		local enum_set = t.__enum
+		local enum_set = rawget(t,"__enum")
 		if enum_set then
-			stable_set(t.__handle, index, enum_set[v])
+			stable_settable(t.__handle, index, enum_set[v])
 		else
 			local typename = type(v)
 			if typename == "table" then
-				local sub = stable.create(t.__type)
-				stable_set(t.__handle, index, sub.__handle)
+				local sub = _create_node(t.__type)
+				stable_settable(t.__handle, index, sub.__handle)
 				rawset(t, index , sub)
 				for k,v in pairs(v) do
 					sub[k] = v
@@ -152,10 +200,10 @@ local _array_meta = {
 function _bind( handle, typeinfo)
 	local self = {}
 	self.__handle = handle
-	self.__gc = c.grab(handle)
 	self.__iter = typeinfo.iter
 	self.__get = typeinfo.get
 	self.__set = typeinfo.set
+	self.__default = typeinfo.default
 	return setmetatable(self, _struct_meta)
 end
 
@@ -200,7 +248,6 @@ local function _init_struct(info , src)
 				info.default[k] = 1
 			else
 				-- It's a struct
-				info.default[i] = anonymous_type
 				info.default[k] = anonymous_name
 			end
 			anonymous = anonymous + 1
@@ -225,7 +272,6 @@ local function _init_struct(info , src)
 						info.get[i] = typeinfo.id_name
 						info.default[k] = 1
 					else
-						info.get[i] = typeinfo
 						info.default[k] = v
 					end
 				end
@@ -285,8 +331,8 @@ local function _init(self, typename)
 			elseif default == "" then
 				stable_set(self.__handle, index, default)
 			else
-				local sub = stable.create(default)
-				stable_set(self.__handle, index, sub.__handle)
+				local sub = _create_node(default)
+				stable_settable(self.__handle, index, sub.__handle)
 				rawset(self, key , sub)
 			end
 		else
@@ -296,42 +342,37 @@ local function _init(self, typename)
 end
 
 function stable.bind( handle , typename)
-	return _bind( handle , _typeinfo[typename])
+	local self = _bind( handle , _typeinfo[typename])
+	local gcobj = c.grab(handle)
+	rawset(self, "__gc" , gcobj)
+	return self
 end
 
-function stable.create( typename )
+-- create_node is local
+function _create_node(typename)
 	local self = {}
-	self.__handle, self__gc = c.create()
+	self.__handle = c.create()
 
 	if string.byte(typename) == 42 then
 		-- '*' == 42 , It's a array
-		if typename == "*number" then
-			self.__type = "number"
-		elseif typename == "*boolean" then
-			self.__type = "boolean"
-		elseif typename == "*string" then
-			self.__type = "string"
-		elseif typename == "*userdata" then
-			self.__type = "userdata"
-		else
-			typename = string.sub(typename,2)
-			local typeinfo = assert(_typeinfo[typename],typename)
-			if typeinfo[1] == "enum" then
-				self.__type = typeinfo.id_name
-				self.__enum = typeinfo.name_id
-			else
-				self.__type = typename
-			end
-		end
 		stable_set(self.__handle, 's' , 0)
-		return setmetatable(self, _array_meta)
+		return _bind_array(self, typename)
 	end
 	self.__iter = _typeinfo[typename].iter
 	self.__get = _typeinfo[typename].get
 	self.__set = _typeinfo[typename].set
+	self.__default = _typeinfo[typename].default
 
 	_init(self, typename)
 	return setmetatable(self, _struct_meta)
+end
+
+function stable.create(typename)
+	local self = _create_node( typename )
+	local gcobj = c.grab(self.__handle)
+	c.decref(self.__handle)
+	rawset(self,"__gc", gcobj)
+	return self
 end
 
 local _default_value = {
@@ -370,6 +411,7 @@ function stable.resize(t,size)
 		local typename = t.__type
 		local default
 		if type(typename) == "table" then
+			-- enum
 			default = 1
 		else
 			default = _default_value[typename]
@@ -380,13 +422,12 @@ function stable.resize(t,size)
 			end
 		else
 			for i = n+1,size do
-				local old = t[i]
-				if old then
-					_reset_default(old, typename)
-				else
-					t[i] = {}
-				end
+				t[i] = {}
 			end
+		end
+	else
+		for i = size+1, n do
+			rawset(t,i,nil)
 		end
 	end
 end

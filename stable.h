@@ -45,7 +45,7 @@ struct table * stable_table(struct table *, const char *key, size_t sz_idx);
 int stable_type(struct table *, const char *key, size_t sz_idx, union table_value *v);
 void stable_value_string(union table_value *v, table_setstring_func sfunc, void *ud);
 
-struct table * stable_settable(struct table *, const char *key, size_t sz_idx);
+int stable_settable(struct table *, const char *key, size_t sz_idx, struct table *);
 int stable_setnumber(struct table *, const char *key, size_t sz_idx, double n);
 int stable_setboolean(struct table *, const char *key, size_t sz_idx, int b);
 int stable_setid(struct table *, const char *key, size_t sz_idx, uint64_t id);

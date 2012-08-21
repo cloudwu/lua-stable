@@ -63,7 +63,8 @@ dump(struct table *root, int depth) {
 
 static void
 test(struct table *root) {
-	struct table * sub = stable_settable(root,TKEY("hello"));
+	struct table * sub = stable_create();
+	stable_settable(root,TKEY("hello"),sub);
 	stable_setnumber(root,TINDEX(10),100);
 	stable_setstring(sub,TINDEX(0),TKEY("world"));
 	dump(root,0);

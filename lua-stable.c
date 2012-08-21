@@ -69,8 +69,6 @@ _error(lua_State *L, const char *key, size_t sz, int type) {
 	}
 }
 
-static void _set_value(lua_State *L, struct table * t, const char *key, size_t sz, int idx, int depth);
-
 static const char * 
 _get_key(lua_State *L, int key_idx, size_t *sz_idx) {
 	int type = lua_type(L,key_idx);
@@ -96,27 +94,7 @@ _get_key(lua_State *L, int key_idx, size_t *sz_idx) {
 }
 
 static void
-_settable(struct table * t, lua_State *L, int idx, int depth) {
-	if (depth > MAX_DEPTH) {
-		luaL_error(L, "set table too deep");
-	}
-	if (idx < 0) {
-		idx = lua_gettop(L) + idx + 1;
-	}
-	lua_checkstack(L, idx + 8);
-
-	lua_pushnil(L);
-
-	while (lua_next(L, idx) != 0) {
-		size_t sz;
-		const char *key = _get_key(L,-2,&sz);
-		_set_value(L, t, key, sz, -1 , depth);
-		lua_pop(L, 1);
-	}
-}
-
-static void
-_set_value(lua_State *L, struct table * t, const char *key, size_t sz, int idx, int depth) {
+_set_value(lua_State *L, struct table * t, const char *key, size_t sz, int idx) {
 	int type = lua_type(L,idx);
 	int r;
 	switch(type) {
@@ -128,22 +106,13 @@ _set_value(lua_State *L, struct table * t, const char *key, size_t sz, int idx, 
 		break;
 	case LUA_TSTRING: {
 		size_t len;
-		const char * str = lua_tolstring(L,3,&len);
+		const char * str = lua_tolstring(L,idx,&len);
 		r = stable_setstring(t, key, sz , str, len);
 		break;
 	}
 	case LUA_TLIGHTUSERDATA:
 		r = stable_setid(t, key, sz, (uint64_t)(uintptr_t)lua_touserdata(L,idx));
 		break;
-	case LUA_TTABLE: {
-		struct table * sub = stable_settable(t,key,sz);
-		if (sub == NULL) {
-			_error(L,key,sz,type);
-		}
-		r = 0;
-		_settable(sub,L,idx,depth+1);
-		break;
-	}
 	default:
 		luaL_error(L,"Unsupport value type %s",lua_typename(L,type));
 	}
@@ -153,11 +122,22 @@ _set_value(lua_State *L, struct table * t, const char *key, size_t sz, int idx, 
 }
 
 static int
+_settable(lua_State *L) {
+	struct table * t = lua_touserdata(L,1);
+	size_t sz;
+	const char * key = _get_key(L,2,&sz);
+	if (stable_settable(t,key,sz, lua_touserdata(L,3))) {
+		_error(L,key,sz,LUA_TLIGHTUSERDATA);
+	}
+	return 0;
+}
+
+static int
 _set(lua_State *L) {
 	struct table * t = lua_touserdata(L,1);
 	size_t sz;
 	const char * key = _get_key(L,2,&sz);
-	_set_value(L, t, key, sz, 3, 0);
+	_set_value(L, t, key, sz, 3);
 	return 0;
 }
 
@@ -321,15 +301,8 @@ _init_mt(lua_State *L) {
 static int
 _create(lua_State *L) {
 	struct table * t = stable_create(L);
-	if (lua_istable(L,1)) {
-		_settable(t,L,1,0);
-	}
 	lua_pushlightuserdata(L,t);
-	struct table ** ud = lua_newuserdata(L,sizeof(struct table*));
-	*ud = t;
-	lua_pushvalue(L,lua_upvalueindex(1));
-	lua_setmetatable(L,-2);
-	return 2;
+	return 1;
 }
 
 static int
@@ -378,11 +351,13 @@ luaopen_stable_raw(lua_State *L) {
 	luaL_checkversion(L);
 
 	luaL_Reg l[] = {
+		{ "create" , _create },
 		{ "decref", _decref },
 		{ "incref", _incref },
 		{ "getref", _getref },
 		{ "get", _get },
 		{ "set", _set },
+		{ "settable", _settable },
 		{ "pairs", _pairs },
 		{ "ipairs", _ipairs },
 		{ "init", _init_mt },
@@ -393,15 +368,9 @@ luaopen_stable_raw(lua_State *L) {
 
 	lua_createtable(L,0,1);
 	lua_pushcfunction(L, _release);
-	lua_setfield(L, -2, "__gc");
-
-	luaL_Reg l2[] = {
-		{ "create" , _create },
-		{ "grab" , _grab },
-		{ NULL, NULL },
-	};
-
-	luaL_setfuncs(L,l2,1);
+	lua_setfield(L, -2, "__gc"); 
+	lua_pushcclosure(L, _grab, 1);
+	lua_setfield(L, -2, "grab");
 
 	return 1;
 }

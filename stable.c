@@ -570,16 +570,21 @@ _insert_table(struct table *t, const char *key, size_t sz_idx, struct value *v) 
 	return type;
 }
 
-struct table *
-stable_settable(struct table *t, const char *key, size_t sz_idx) {
+int
+stable_settable(struct table *t, const char *key, size_t sz_idx, struct table * sub) {
 	struct value tmp;
-	tmp.type = ST_TABLE;
-	tmp.v.t = stable_create();
-	int type = _insert_table(t,key,sz_idx,&tmp);
-	if (type != ST_NIL) {
-		return NULL;
+	_search_table(t,key,sz_idx,&tmp);
+	if (tmp.type == ST_TABLE) {
+		stable_release(tmp.v.t);
 	}
-	return tmp.v.t;
+
+	tmp.type = ST_TABLE;
+	tmp.v.t = sub;
+	int type = _insert_table(t,key,sz_idx,&tmp);
+	if (type != ST_NIL && type!= ST_TABLE) {
+		return 1;
+	}
+	return 0;
 }
 
 int
