@@ -1,4 +1,5 @@
 local c = require "stable.raw"
+local int64 = require "int64"
 local assert = assert
 local stable_get = c.get
 local stable_set = c.set
@@ -198,6 +199,7 @@ local function _init_struct(info , src)
 				info.default[k] = 1
 			else
 				-- It's a struct
+				info.get[i] = anonymous_type
 				info.default[k] = anonymous_name
 			end
 			anonymous = anonymous + 1
@@ -208,9 +210,12 @@ local function _init_struct(info , src)
 				info.default[k] = false
 			elseif v == "string" or v == "" then
 				info.default[k] = ""
+			elseif v == "userdata" then
+				info.default[k] = int64.new(0)
 			else
-				-- default is typename
-				if string.byte(v) == 42 then
+				-- default is typename ( 42 == '*' , 46 == '.' )
+				local fc = string.byte(v)
+				if fc == 42 or fc == 46 then
 					info.default[k] = v
 				else
 					local typeinfo = _typeinfo[v]
@@ -219,6 +224,7 @@ local function _init_struct(info , src)
 						info.get[i] = typeinfo.id_name
 						info.default[k] = 1
 					else
+						info.get[i] = typeinfo
 						info.default[k] = v
 					end
 				end
@@ -272,10 +278,16 @@ local function _init(self, typename)
 	local tinfo = _typeinfo[typename]
 	for key,default in pairs(tinfo.default) do
 		local index = tinfo.get[key]
-		if type(default) == "string" and default~="" then
-			local sub = stable.create(default)
-			stable_set(self.__handle, index, sub.__handle)
-			rawset(self, key , sub)
+		if type(default) == "string" then
+			if string.byte(default) == 46 then -- 46 == '.'
+				stable_set(self.__handle, index, string.sub(default,2))
+			elseif default == "" then
+				stable_set(self.__handle, index, default)
+			else
+				local sub = stable.create(default)
+				stable_set(self.__handle, index, sub.__handle)
+				rawset(self, key , sub)
+			end
 		else
 			stable_set(self.__handle, index, default)
 		end
@@ -298,6 +310,8 @@ function stable.create( typename )
 			self.__type = "boolean"
 		elseif typename == "*string" then
 			self.__type = "string"
+		elseif typename == "*userdata" then
+			self.__type = "userdata"
 		else
 			typename = string.sub(typename,2)
 			local typeinfo = assert(_typeinfo[typename],typename)
@@ -314,6 +328,7 @@ function stable.create( typename )
 	self.__iter = _typeinfo[typename].iter
 	self.__get = _typeinfo[typename].get
 	self.__set = _typeinfo[typename].set
+
 	_init(self, typename)
 	return setmetatable(self, _struct_meta)
 end
@@ -327,18 +342,24 @@ local _default_value = {
 	number = 0,
 	boolean = false,
 	string = "",
+	userdata = int64.new(0),
 }
 
 local function _reset_default(self,typename)
-	if string.byte(typename) == 42 then
+	if string.byte(typename) == 42 then	-- 42 == '*'
 		stable.resize(self,0)
 		return
 	end
 	local tinfo = _typeinfo[typename]
 	for key,default in pairs(tinfo.default) do
 		local index = tinfo.get[key]
-		if type(default) == "string" and default~="" then
-			_reset_default(self[key] , default)
+		if type(default) == "string" then
+			local fc = string.byte(default)
+			if fc == 46 then
+				stable_set(self.__handle, index, string.sub(default,2))
+			else
+				_reset_default(self[key] , default)
+			end
 		else
 			stable_set(self.__handle, index, default)
 		end
