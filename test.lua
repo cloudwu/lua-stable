@@ -29,5 +29,6 @@ a.bars[1] = { second = 2 }
 a.bars[2] = { third = { "ONE" , "ONE" , "TWO" } }
 stable.resize(a.bars,1)
 print_r(a)
-a.bars[2] = { second = 2 }
+a.bars[2] = { third = { "ONE" } }
 print("=======")
+print_r(a)

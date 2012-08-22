@@ -1,6 +1,7 @@
 local c = require "stable.raw"
 local int64 = require "int64"
 local assert = assert
+local rawset = rawset
 local rawget = rawget
 local stable_get = assert(c.get)
 local stable_set = assert(c.set)
@@ -76,6 +77,23 @@ local function _bind_array(self , typename)
 	return setmetatable(self, _array_meta)
 end
 
+local function default_node(parent_handle, typename, index)
+	local old = stable_get(parent_handle, index)
+	local sub
+	if old == nil then
+		sub = _create_node(typename)
+		stable_settable(parent_handle, index, sub.__handle)
+	elseif string.byte(typename) == 42 then	-- '*'
+		-- It's a array
+		sub = {}
+		sub.__handle = old
+		_bind_array(sub, typename)
+	else
+		sub = _bind(old, _typeinfo[typename])
+	end
+	return sub
+end
+
 local _struct_meta = {
 	__index = function(t,k)
 		local it = t.__get
@@ -114,10 +132,10 @@ local _struct_meta = {
 		if enum then
 			stable_set(t.__handle, index , enum[v])
 		elseif type(v) == "table" then
-			local sub = _create_node(t.__default[k])
-			stable_settable(self.__handle, index, sub.__handle)
-			rawset(self, key , sub)
+			local sub = default_node(t.__handle, t.__default[k], index)
+			rawset(t, k , sub)
 			for k,v in pairs(v) do
+				rawset(sub,k,nil)
 				sub[k] = v
 			end
 		else
@@ -162,21 +180,18 @@ _array_meta = {
 	end,
 	__newindex = function(t,index,v)
 		local n = stable_get(t.__handle, 's') + 1
-		if index == n then
-			stable_set(t.__handle,'s',n)
-		elseif index > n then
+		if index >= n then
 			stable.resize(t, index)
 		end
 		local enum_set = rawget(t,"__enum")
 		if enum_set then
-			stable_settable(t.__handle, index, enum_set[v])
+			stable_set(t.__handle, index, enum_set[v])
 		else
 			local typename = type(v)
 			if typename == "table" then
-				local sub = _create_node(t.__type)
-				stable_settable(t.__handle, index, sub.__handle)
-				rawset(t, index , sub)
+				local sub = rawget(t, index)
 				for k,v in pairs(v) do
+					rawset(sub,k,nil)
 					sub[k] = v
 				end
 			else
@@ -406,30 +421,38 @@ end
 
 function stable.resize(t,size)
 	local n = assert(stable_get(t.__handle,'s'))
-	stable_set(t.__handle,'s',size)
+	local typename = t.__type
+	local default
+	if type(typename) == "table" then
+		-- enum
+		default = 1
+	else
+		default = _default_value[typename]
+	end
 	if size > n then
-		local typename = t.__type
-		local default
-		if type(typename) == "table" then
-			-- enum
-			default = 1
-		else
-			default = _default_value[typename]
-		end
 		if default then
 			for i = n+1,size do
 				stable_set(t.__handle, i , default)
 			end
 		else
 			for i = n+1,size do
-				t[i] = {}
+				local obj = default_node(t.__handle, typename, i)
+				rawset(t,i,obj)
 			end
 		end
 	else
-		for i = size+1, n do
-			rawset(t,i,nil)
+		if default then
+			for i = size+1, n do
+				stable_set(t.__handle, i , default)
+			end
+		else
+			for i = size+1, n do
+				_reset_default(t[i], t.__type)
+				rawset(t,i,nil)
+			end
 		end
 	end
+	stable_set(t.__handle,'s',size)
 end
 
 return stable
