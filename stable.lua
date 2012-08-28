@@ -94,10 +94,22 @@ local function default_node(parent_handle, typename, index)
 	return sub
 end
 
+local function init_map(sobj, map)
+	for k,v in pairs(map) do
+		local value = rawget(sobj,k)
+		if value == nil then
+			sobj[k] = v
+		else
+			init_map(value, v)
+		end
+	end
+end
+
 local _struct_meta = {
 	__index = function(t,k)
 		local it = t.__get
 		local index = it[k]
+		assert(index, k)
 		local v = stable_get(t.__handle, index)
 		if type(v) == "userdata" then
 			local typename = t.__default[k]
@@ -119,7 +131,7 @@ local _struct_meta = {
 		else
 			local enum = it[index]
 			if enum then
-				return enum[v]
+				return assert(enum[v],v)
 			else
 				return v
 			end
@@ -130,14 +142,11 @@ local _struct_meta = {
 		local index = it[k]
 		local enum = it[index]
 		if enum then
-			stable_set(t.__handle, index , enum[v])
+			stable_set(t.__handle, index , assert(enum[v],v))
 		elseif type(v) == "table" then
 			local sub = default_node(t.__handle, t.__default[k], index)
 			rawset(t, k , sub)
-			for k,v in pairs(v) do
-				rawset(sub,k,nil)
-				sub[k] = v
-			end
+			init_map(sub, v)
 		else
 			stable_set(t.__handle, index , v)
 		end
@@ -158,9 +167,11 @@ end
 -- _array_meta is local
 _array_meta = {
 	__index = function(t,index)
-		local n = stable_get(t.__handle, 's') + 1
-		if index >= n then
-			return nil
+		local n = stable_get(t.__handle, 's')
+		if index > n then
+			-- todo: remove resize
+			stable.resize(t, index)
+			return rawget(t,index)
 		end
 		local obj = stable_get(t.__handle, index)
 		if obj then
@@ -173,27 +184,24 @@ _array_meta = {
 				return obj
 			elseif type(typename) == "table" then
 				-- It's a enum
-				return typename[obj]
+				return assert(typename[obj],obj)
 			end
 		end
 		return obj
 	end,
 	__newindex = function(t,index,v)
-		local n = stable_get(t.__handle, 's') + 1
-		if index >= n then
+		local n = stable_get(t.__handle, 's')
+		if index > n then
 			stable.resize(t, index)
 		end
 		local enum_set = rawget(t,"__enum")
 		if enum_set then
-			stable_set(t.__handle, index, enum_set[v])
+			stable_set(t.__handle, index, assert(enum_set[v],v))
 		else
 			local typename = type(v)
 			if typename == "table" then
 				local sub = rawget(t, index)
-				for k,v in pairs(v) do
-					rawset(sub,k,nil)
-					sub[k] = v
-				end
+				init_map(sub,v)
 			else
 				assert(typename == t.__type)
 				stable_set(t.__handle, index, v)
